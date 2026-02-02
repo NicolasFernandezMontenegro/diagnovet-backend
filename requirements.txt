@@ -1,0 +1,18 @@
+# API
+fastapi==0.110.0
+uvicorn[standard]==0.27.1
+
+# Google Cloud
+google-cloud-documentai==2.26.0
+google-cloud-storage==2.14.0
+google-cloud-firestore==2.14.0
+
+# Validation & config
+pydantic==2.6.1
+python-dotenv==1.0.1
+pydantic-settings==2.2.1
+
+
+# Testing
+pytest==8.0.2
+httpx==0.26.0
