@@ -1,6 +1,11 @@
 from app.services.repository import ReportRepository
+from app.services.repository import ReportRepository
+from app.services.storage import StorageService
 
-_repo = ReportRepository()
+
+def get_storage_service() -> StorageService:
+    return StorageService()
 
 def get_repo() -> ReportRepository:
-    return _repo
+    from app.main import repo
+    return repo

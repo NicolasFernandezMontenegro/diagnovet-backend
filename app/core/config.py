@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     GCS_BUCKET_NAME: str
     API_KEY: str
     GOOGLE_APPLICATION_CREDENTIALS: str
-    ENV: Literal["dev", "prod"] = "dev"
+    ENV: Literal["dev","prod"] = "dev"
 
     model_config = SettingsConfigDict(
         env_file=".env",

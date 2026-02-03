@@ -2,3 +2,10 @@ __pycache__/
 *.pyc
 .env
 .venv/
+env/
+venv/
+.vscode/
+.idea/
+google_credentials.json
+*.pdf
+batch_results/
