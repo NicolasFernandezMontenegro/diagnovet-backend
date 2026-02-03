@@ -1,13 +1,15 @@
-from typing import Dict
+from typing import Dict, Optional
 from app.schemas.domain import Report
 
 
-class InMemoryReportRepository:
+class ReportRepository:
+    
     def __init__(self):
-        self._data: Dict[str, Report] = {}
+        self._reports: Dict[str, Report] = {}
 
-    def save(self, report: Report) -> None:
-        self._data[report.id] = report
+    def save(self, report: Report) -> Report:
+        self._reports[report.id] = report
+        return report
 
-    def get(self, report_id: str) -> Report | None:
-        return self._data.get(report_id)
+    def get(self, report_id: str) -> Optional[Report]:
+        return self._reports.get(report_id)

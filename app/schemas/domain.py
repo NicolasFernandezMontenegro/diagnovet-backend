@@ -1,3 +1,4 @@
+from uuid import uuid4
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime, timezone
@@ -22,7 +23,7 @@ class Veterinarian(BaseModel):
 
 
 class Report(BaseModel):
-    id: str
+    id: str = Field(default_factory=lambda: str(uuid4()))
     patient: Patient
     owner: Owner
     veterinarian: Veterinarian
