@@ -1,22 +1,39 @@
 import os
 import asyncio
 import json
-import datetime 
 from google.cloud import storage
+
 
 class StorageService:
     def __init__(self):
         self.bucket_name = os.getenv("GCS_BUCKET_NAME", "diagnovet-bucket")
         self.client = storage.Client()
 
-    async def upload_file(self, file_obj, destination_blob_name: str, content_type: str) -> str:
-        return await asyncio.to_thread(self._upload_sync, file_obj, destination_blob_name, content_type)
+    async def upload_file(
+        self,
+        file_obj,
+        destination_blob_name: str,
+        content_type: str,
+    ) -> str:
+        return await asyncio.to_thread(
+            self._upload_sync,
+            file_obj,
+            destination_blob_name,
+            content_type,
+        )
 
-    def _upload_sync(self, file_obj, destination_blob_name: str, content_type: str) -> str:
+    def _upload_sync(
+        self,
+        file_obj,
+        destination_blob_name: str,
+        content_type: str,
+    ) -> str:
         bucket = self.client.bucket(self.bucket_name)
         blob = bucket.blob(destination_blob_name)
+
         file_obj.seek(0)
         blob.upload_from_file(file_obj, content_type=content_type)
+
         return f"gs://{self.bucket_name}/{destination_blob_name}"
 
     async def list_files(self, prefix: str):
@@ -34,16 +51,3 @@ class StorageService:
         blob = bucket.blob(blob_name)
         content = blob.download_as_text()
         return json.loads(content)
-    
-    def generate_signed_url(self, blob_name: str, expiration: int = 3600) -> str:
-        """
-        Genera una URL https válida por 1 hora.
-        """
-        bucket = self.client.bucket(self.bucket_name)
-        blob = bucket.blob(blob_name)
-        
-        return blob.generate_signed_url(
-            version="v4",
-            expiration=datetime.timedelta(seconds=expiration),
-            method="GET",
-        )

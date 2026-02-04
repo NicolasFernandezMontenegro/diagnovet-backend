@@ -57,36 +57,28 @@ async def create_report(
             detail=str(e)
         )
 
-@router.get("/{report_id}", response_model=ReportResponse)
+@router.get("/{report_id}")
 def get_report(
     report_id: str,
     repo: ReportRepository = Depends(get_repo),
-    storage_service: StorageService = Depends(get_storage_service) 
 ):
     report = repo.get(report_id)
+
     if not report:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Report not found",
-        )
-    
-    
-    public_urls = []
-    for gs_uri in report.image_urls:
-        try:
-        
-            parts = gs_uri.split("/")
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    image_urls = []
+    for uri in report.image_urls:
+        if uri.startswith("gs://"):
             
-            if len(parts) > 3:
-                blob_name = "/".join(parts[3:])
-                signed_url = storage_service.generate_signed_url(blob_name)
-                public_urls.append(signed_url)
-            else:
-                public_urls.append(gs_uri)
-        except Exception as e:
-            print(f"Error generando signed URL: {e}")
-            public_urls.append(gs_uri)
+            path = uri.replace("gs://", "", 1)
+            image_urls.append(f"https://storage.googleapis.com/{path}")
+        else:
+            image_urls.append(uri)
 
-    report.image_urls = public_urls
-
-    return {"report": report}
+    return {
+        "report": {
+            **report.model_dump(exclude={"image_urls"}),
+            "image_urls": image_urls,
+        }
+    }
