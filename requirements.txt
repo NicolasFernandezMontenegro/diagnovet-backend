@@ -1,20 +1,22 @@
-# API
+# API Framework
 fastapi==0.110.0
 uvicorn[standard]==0.27.1
 
-# Google Cloud
+# Google Cloud SDKs
 google-cloud-documentai==2.26.0
 google-cloud-storage==2.14.0
 google-cloud-firestore==2.14.0
+google-auth==2.27.0  
 
-# Validation & config
+# Validation & Configuration
 pydantic==2.6.1
 python-dotenv==1.0.1
 pydantic-settings==2.2.1
-python-multipart==0.0.22
+python-multipart==0.0.9 
 
+# Utilities
+requests==2.31.0
 
 # Testing
 pytest==8.0.2
 httpx==0.26.0
-requests==2.31.0

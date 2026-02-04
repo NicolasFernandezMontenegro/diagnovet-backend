@@ -61,24 +61,26 @@ async def create_report(
 def get_report(
     report_id: str,
     repo: ReportRepository = Depends(get_repo),
+    storage_service: StorageService = Depends(get_storage_service) 
 ):
     report = repo.get(report_id)
 
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    image_urls = []
+    signed_image_urls = []
     for uri in report.image_urls:
         if uri.startswith("gs://"):
+            blob_name = uri.replace(f"gs://{storage_service.bucket_name}/", "")
             
-            path = uri.replace("gs://", "", 1)
-            image_urls.append(f"https://storage.googleapis.com/{path}")
+            signed_url = storage_service.generate_signed_url(blob_name)
+            signed_image_urls.append(signed_url)
         else:
-            image_urls.append(uri)
+            signed_image_urls.append(uri)
 
     return {
         "report": {
             **report.model_dump(exclude={"image_urls"}),
-            "image_urls": image_urls,
+            "image_urls": signed_image_urls,
         }
     }

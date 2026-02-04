@@ -14,6 +14,7 @@ The architecture prioritizes **deterministic behavior**, **explicit failure mode
 * **Security First:**  
   * API Key authentication for all endpoints  
   * Private GCS buckets with **V4 Signed URLs** (HMAC-SHA256) for secure, time-limited image access
+  * Identity-Based Signing: Utilizes IAM Impersonation (Service Account Token Creator) to generate Signed URLs in Cloud Run without storing sensitive JSON keys within the container environment.
 
 * **Cloud-Native Scalability:** Stateless FastAPI service deployed on **Google Cloud Run**, scaling automatically with traffic.
 
@@ -55,9 +56,7 @@ Retrieves the structured data of a processed report.
 
 **Behavior:**
 
-* Transforms internal `gs://` paths into public HTTPS Signed URLs.
-
-* URLs expire automatically after 1 hour.
+* **Just-in-Time URL Generation**: URIs are stored as immutable gs:// paths in Firestore; the API generates ephemeral HTTPS signatures only upon request to ensure the principle of least privilege.
 
 **Response (200 OK):**
 
@@ -179,12 +178,12 @@ The API is deployed on **Google Cloud Run** and publicly accessible.
 
 **Base URL:**
 
-https://diagnovet-backend-32acft5faq-uc.a.run.app
+https://diagnovet-backend-758060382388.us-central1.run.app/
 
 
 **Swagger UI:**
 
-https://diagnovet-backend-32acft5faq-uc.a.run.app/docs
+https://diagnovet-backend-758060382388.us-central1.run.app/docs
 
 
 **Authentication:**
@@ -202,10 +201,25 @@ The service uses:
 - Firestore (report persistence)
 
 
-### Possible Improvements
+## Possible Improvements & Strategic Roadmap
 
-- **Async Webhooks**: Convert the Batch failover into a truly asynchronous process using Pub/Sub.
+To transition this system from a functional MVP to a high-scale clinical product, the following architectural and security enhancements are proposed:
+### 1. Professional-Grade Security ("Security REAL")
 
-- **LLM Refinement**: Use a small LLM (like Gemini Flash) to refine the Regex-extracted text.
+  **Google Secret Manager Integration**: Move all sensitive credentials (API keys, service account emails) from environment variables to an encrypted vault. This allows for automated secret rotation and prevents exposure in logs or CI/CD pipelines.
 
-- **Metadata Validation**: Add stricter Pydantic validators for dates and species.
+  **Hashed API Key Management**: Transition to a multi-tenant authentication system where SHA-256 hashes of client keys are stored in Firestore. This enables individual revocation of access for different clinics without affecting the entire service.
+
+  **Identity-Based Access Control**: Implement fine-grained IAM roles to further restrict the "Service Account Token Creator" permissions to specific resources, adhering to the principle of least privilege.
+
+### 2. Event-Driven Scalability
+
+  **Asynchronous Webhooks via Pub/Sub**: Decouple the Batch processing failover by utilizing Google Cloud Pub/Sub. Instead of the client waiting for a response or polling, the system will push a notification to a registered webhook once the diagnostic report is fully processed.
+
+  **Dead Letter Queues (DLQ)**: Implementation of a retry and monitoring mechanism for documents that fail OCR or parsing, ensuring no medical data is lost during transient outages.
+
+### 3. Data Integrity & Processing
+
+  **Contextual Refinement Engine**: Implementation of a semantic processing layer to act as a clinical reasoning stage over the Regex extraction. This engine will normalize medical terminology and programmatically correct character-level inaccuracies (OCR typos) in pharmaceutical dosages and clinical nomenclature.
+
+  **Strict Metadata Validation**: Enhancing Pydantic models with domain-specific validators for the veterinary field, such as species-specific age ranges and standardized formatting for clinical dates.

@@ -11,6 +11,7 @@ from app.services.storage import StorageService
 
 class DocumentAIService:
     def __init__(self):
+        """Initialize Document AI client with location-specific endpoint."""
         self.settings = get_settings()
         self.client_options = ClientOptions(
             api_endpoint=f"{self.settings.GCP_LOCATION}-documentai.googleapis.com"
@@ -23,14 +24,19 @@ class DocumentAIService:
         storage_service: StorageService, 
         mime_type: str = "application/pdf"
     ):
+        """
+        Main entry point for document processing.
+        Attempts synchronous (online) processing and fails over to batch if necessary.
+        """
+
         processor_name = self.client.processor_path(
             self.settings.resolved_project_id(),
             self.settings.GCP_LOCATION,
             self.settings.DOCUMENT_AI_PROCESSOR_ID
         )
 
-
         try:
+            
             request = documentai.ProcessRequest(
                 name=processor_name,
                 skip_human_review=True,
@@ -44,19 +50,21 @@ class DocumentAIService:
             )
             result = self.client.process_document(request=request)
             document = result.document
-            print("Procesamiento Online exitoso")
+            print("Online processing successful.")
 
         except InvalidArgument as e:
+            
             if "PAGE_LIMIT_EXCEEDED" in str(e):
-                print(f"Límite excedido ({e}). Cambiando a Batch Processing...")
+                print(f"Limit exceeded ({e}). Switching to Batch Processing...")
                 document = await self._process_batch(gcs_uri, processor_name, storage_service)
             else:
+                
                 raise e
-
         parser = ReportParser(document.text)
         report_data = parser.parse()
 
         image_urls = await self._extract_and_upload_images(document, storage_service)
+        
         
         if hasattr(report_data, "image_urls"):
             report_data.image_urls = image_urls
@@ -64,6 +72,7 @@ class DocumentAIService:
         return report_data
 
     async def _process_batch(self, gcs_uri: str, processor_name: str, storage_service: StorageService):
+        """Handles large documents using asynchronous Batch Processing."""
         output_prefix = f"batch_results/{uuid.uuid4()}"
         output_gcs_uri = f"gs://{self.settings.GCS_BUCKET_NAME}/{output_prefix}"
 
@@ -81,11 +90,12 @@ class DocumentAIService:
             ),
         )
 
+        
         operation = self.client.batch_process_documents(request=request)
         
-        print("Esperando a que termine el Batch processing...")
-        operation.result(timeout=180) 
-        print("Batch terminado. Descargando resultados...")
+        print("Waiting for Batch processing to complete...")
+        operation.result(timeout=300)
+        print("Batch complete. Downloading results...")
 
         blobs = await storage_service.list_files(prefix=output_prefix)
         json_blobs = [b for b in blobs if b.name.endswith(".json")]
@@ -95,6 +105,7 @@ class DocumentAIService:
         all_pages = []
         combined_document = documentai.Document()
 
+        
         for blob in json_blobs:
             json_data = await storage_service.read_json_file(blob.name)
             shard_doc = documentai.Document.from_json(json.dumps(json_data))
@@ -110,17 +121,18 @@ class DocumentAIService:
         return combined_document
 
     async def _extract_and_upload_images(self, document, storage_service: StorageService) -> List[str]:
+        """Extracts page images and uploads them as JPEGs to GCS."""
         urls = []
         
         for i, page in enumerate(document.pages):
-            
             if page.image and page.image.content:
                 try:
                     image_content = page.image.content
                     file_obj = io.BytesIO(image_content)
                     
-                    folder_id = uuid.uuid4()
-                    filename = f"images/{folder_id}/page_{i+1}.jpeg"
+                    
+                    unique_id = uuid.uuid4()
+                    filename = f"images/{unique_id}/page_{i+1}.jpeg"
                     
                     gcs_uri = await storage_service.upload_file(
                         file_obj=file_obj,
@@ -129,7 +141,7 @@ class DocumentAIService:
                     )
                     urls.append(gcs_uri)
                 except Exception as e:
-                    print(f"Error procesando página {i+1}: {e}")
+                    print(f"Error processing page {i+1}: {e}")
                     continue
         
         return urls
