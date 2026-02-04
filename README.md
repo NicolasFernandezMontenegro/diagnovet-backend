@@ -3,26 +3,26 @@
 ## Overview
 Diagnovet Backend is a production-ready REST API designed to transform unstructured veterinary medical reports (PDF) into structured JSON data and securely accessible medical images. 
 
-The system leverages **Google Document AI** for OCR, **Google Cloud Storage** for asset management, and **Google Firestore** for metadata persistence. It is built to handle real-world variability in document length and formatting.
+The system leverages **Google Document AI** for OCR, **Google Cloud Storage** for asset management, and **Google Firestore** for metadata persistence. It is built to handle **real-world variability** in document length and formatting.
 
-The system is designed with deterministic behavior and clear failure modes, prioritizing reliability over opaque AI-only extraction.
+The architecture prioritizes **deterministic behavior**, **explicit failure modes**, and **operational clarity**, avoiding opaque AI-only extraction pipelines.
 
 ## Key Features
 * **Hybrid Ingestion:** Automatic failover from Online (Sync) to Batch (Async) processing for documents exceeding 30 pages.
-* **Deterministic Parsing:** A robust RegEx-based engine that extracts Patient, Owner, and Clinical data while filtering out noise and metadata headers.
-* **Asset Management:** Automatic extraction of all PDF pages as high-quality JPEGs.
+* **Deterministic Parsing Engine:** RegEx-based extraction of Patient, Owner, Veterinarian, and Clinical data with noise filtering and collision prevention.
+* **Image Asset Extraction:** Every PDF page is rendered and stored as a high-quality JPEG for reliable visual access (radiographs, ultrasounds).
 * **Security First:**  
   * API Key authentication for all endpoints  
   * Private GCS buckets with **V4 Signed URLs** (HMAC-SHA256) for secure, time-limited image access
 
-* **Scalability:** Stateless design deployed on **Google Cloud Run**, scaling automatically based on demand.
+* **Cloud-Native Scalability:** Stateless FastAPI service deployed on **Google Cloud Run**, scaling automatically with traffic.
 
 ## Tech Stack
 * **Backend:** FastAPI (Python 3.11)
 * **OCR / AI:** Google Document AI (OCR Processor)
 * **Storage:** Google Cloud Storage
 * **Database:** Google Firestore (NoSQL)
-* **Deployment:** Google Cloud Run / Docker
+* **Deployment:** Docker + Google Cloud Run
 
 ---
 
@@ -41,34 +41,12 @@ Uploads and processes a veterinary medical report.
 
 ```json
 {
-  "report": {
-    "id": "string",
-    "patient": {
-      "name": "string",
-      "species": "string",
-      "breed": "string",
-      "age": "string",
-      "sex": "string"
-    },
-    "owner": {
-      "name": "string",
-      "contact": "string"
-    },
-    "veterinarian": {
-      "name": "string",
-      "clinic": "string"
-    },
-    "diagnosis": "string",
-    "recommendations": "string",
-    "image_urls": [
-      "string"
-    ],
-    "created_at": "2026-02-04T01:11:05.929Z"
-  }
+  "report_id": "string",
+  "status": "processed"
 }
 ```
 
-> Note: Image paths are stored internally as `gs://` URIs and converted to HTTPS Signed URLs when retrieved via `GET /reports/{id}`.
+> Note: The POST endpoint is intentionally lightweight and returns only the generated `report_id`. The full structured report and image URLs can be retrieved via the `GET /reports/{report_id}` endpoint.
 
 
 ### `GET /reports/{report_id}`
@@ -79,7 +57,7 @@ Retrieves the structured data of a processed report.
 
 * Transforms internal `gs://` paths into public HTTPS Signed URLs.
 
-* Links expire automatically after 1 hour.
+* URLs expire automatically after 1 hour.
 
 **Response (200 OK):**
 
@@ -104,10 +82,8 @@ Retrieves the structured data of a processed report.
     },
     "diagnosis": "string",
     "recommendations": "string",
-    "image_urls": [
-      "string"
-    ],
-    "created_at": "2026-02-04T01:11:05.919Z"
+    "image_urls": ["string"],
+    "created_at": "2026-02-04T01:11:05Z"
   }
 }
 ```
@@ -116,77 +92,114 @@ Retrieves the structured data of a processed report.
 
 ### Backend Logic & Design Choices
 
-#### 1. Failover Strategy (Online → Batch)
+#### 1. Online → Batch Failover Strategy
 
-Document AI restricts online processing to 30 pages. To ensure reliability for long clinical histories:
+Document AI limits online processing to 30 pages.
 
-1. The system attempts an Online Process.
+1. Attempt Online (`process_document`)
 
-2. If a `PAGE_LIMIT_EXCEEDED` error occurs, it triggers a Batch Job.
+2. On `PAGE_LIMIT_EXCEEDED`, trigger Batch processing
 
-3. It polls/waits for the Batch result, merges the sharded JSON outputs from GCS, and proceeds with the extraction.
+3. Poll batch output, merge sharded JSON results from GCS
+
+4. Continue parsing with a unified document model
+
+This guarantees consistent behavior regardless of document size.
 
 #### 2. Deterministic Parsing Engine
 
-Instead of basic string matching, the `ReportParser` uses:
+Instead of probabilistic extraction, the parser uses:
 
-- **Anchored Regex**: Matches patterns only at the start of lines to avoid "eating" descriptions as values.
+* **Anchored Regular Expressions**
+Prevents accidental value capture across visual lines
 
-- **Stop Words**: Uses subsequent labels (e.g., "Sexo:", "Edad:") to terminate the capture of the previous field, preventing data merging.
+* **Stop-Word Boundaries**
+Ensures fields terminate correctly when multiple labels share a line
 
-- **Section Reconstruction**: Merges "Findings" and "Conclusions" while ignoring repetitive footers (e.g., "Dr. Martin Vittaz", "Página X").
+* **Section Reconstruction**
+Combines findings and conclusions while filtering repeated headers/footers
 
-#### 3. Image Handling
+This approach favors **predictability and debuggability** over raw recall.
 
-The system renders and uploads every page as an image. This design choice ensures that even if the OCR fails to label a specific region as a "visual element", the veterinarian can still view the original ultrasound or radiograph capture through the API.
+#### 3. Image Handling Strategy
+
+All pages are rendered and stored as images.
+
+This guarantees:
+
+* No false negatives from OCR layout detection
+
+* Full visual access to original diagnostic material
+
+* Safe delivery via signed URLs without exposing buckets
 
 ## Project Structure
 
 ```Plaintext
 diagnovet-backend/
 ├── app/
-│   ├── main.py               # Entry point
+│   ├── main.py               # FastAPI entry point
 │   ├── api/
-│   │   └── routes.py         # POST and GET logic
+│   │   └── routes.py         # POST /reports, GET /reports/{id}
 │   ├── core/
-│   │   ├── config.py         # Env vars (GCP_PROJECT, BUCKET, etc.)
-│   │   ├── security.py       # API Key validation
-│   │   └── dependencies.py   # Service singletons
+│   │   ├── config.py         # Environment configuration
+│   │   ├── security.py       # API key validation
+│   │   └── dependencies.py  # Dependency injection
 │   ├── schemas/
-│   │   ├── domain.py         # Pydantic models (Report, Patient)
-│   │   └── responses.py      # API Response models
+│   │   ├── domain.py         # Pydantic domain models
+│   │   └── responses.py     # API response models
 │   └── services/
-│       ├── document_ai.py    # Sync/Batch logic & Image extraction
-│       ├── report_parser.py  # Regex Engine
-│       ├── storage.py        # GCS uploads & Signed URLs
-│       └── repository.py     # Firestore CRUD
+│       ├── document_ai.py    # Sync/Batch OCR logic
+│       ├── report_parser.py # Deterministic parser
+│       ├── storage.py        # GCS & Signed URLs
+│       └── repository.py    # Firestore persistence
 ├── tests/
-│   └── samples/
-│       └── sample_report.pdf # Sample PDF for testing
-│   └── test_api.py           # E2E Integration test
-├── Dockerfile                # Python 3.11-slim
+│   ├── samples/sample_report.pdf
+│   └── test_api.py           # End-to-end integration test
+├── Dockerfile
 └── requirements.txt
 ```
 ---
 
 ## Testing & Deployment
 
-### Local Test
-
-1. Set up your `.env` with GCP credentials.
-
-2. Run the server: `uvicorn app.main:app --reload`
-
-3. Execute the E2E test:
+### Local Testing
 
 ```Bash
-python3 tests/test_api.py --file "tests/samples/sample_report.pdf" --key "secret123"
+uvicorn app.main:app --reload
+python3 tests/test_api.py --file tests/samples/sample_report.pdf --key secret123
 ```
-The integration test reflects the exact workflow expected from API consumers and evaluators.
 
-### Cloud Run Deployment
+The integration test mirrors the exact workflow expected from real API consumers.
 
-Deployed using a Service Account with `Storage Object Admin`, `Datastore User`, and `Document AI User` roles. This eliminates the need for local `.json` key files, following GCP security best practices. This setup follows the principle of least privilege and production-grade GCP deployment practice.
+
+## Live API (Cloud Run)
+
+The API is deployed on **Google Cloud Run** and publicly accessible.
+
+**Base URL:**
+
+https://diagnovet-backend-32acft5faq-uc.a.run.app
+
+
+**Swagger UI:**
+
+https://diagnovet-backend-32acft5faq-uc.a.run.app/docs
+
+
+**Authentication:**
+All endpoints are protected using an `x-api-key` header.
+
+**Available endpoints:**
+- `POST /reports` – Upload a veterinary PDF report
+- `GET /reports/{id}` – Retrieve parsed report and extracted images
+- `GET /health` – Health check
+
+The service uses:
+- Cloud Run (containerized FastAPI app)
+- Cloud Storage (PDFs and extracted images)
+- Cloud Document AI (OCR & layout parsing)
+- Firestore (report persistence)
 
 
 ### Possible Improvements
