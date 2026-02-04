@@ -24,10 +24,11 @@ class DocumentAIService:
         mime_type: str = "application/pdf"
     ):
         processor_name = self.client.processor_path(
-            self.settings.PROJECT_ID,
+            self.settings.resolved_project_id(),
             self.settings.GCP_LOCATION,
             self.settings.DOCUMENT_AI_PROCESSOR_ID
         )
+
 
         try:
             request = documentai.ProcessRequest(

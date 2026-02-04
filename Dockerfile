@@ -1,21 +1,13 @@
-# Dockerfile
-FROM python:3.10-slim
-
-# Evita que Python genere archivos .pyc y buffer de salida
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Instalar dependencias
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar el código
-COPY . .
+COPY app ./app
 
-# Exponer el puerto (Cloud Run inyecta la variable PORT, por defecto 8080)
+ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 
-# Comando de ejecución
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port $PORT"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
