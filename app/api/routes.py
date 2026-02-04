@@ -1,7 +1,7 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
 from app.core.security import api_key_auth
-from app.schemas.responses import ReportResponse
+from app.schemas.responses import ReportResponse, CreateReportResponse
 from app.services.repository import ReportRepository
 from app.services.document_ai import DocumentAIService
 from app.services.storage import StorageService 
@@ -17,7 +17,7 @@ router = APIRouter(
 def get_document_ai_service() -> DocumentAIService:
     return DocumentAIService()
 
-@router.post("", response_model=ReportResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=CreateReportResponse, status_code=status.HTTP_201_CREATED)
 async def create_report(
     file: UploadFile = File(...),
     repo: ReportRepository = Depends(get_repo),
@@ -44,7 +44,11 @@ async def create_report(
         
         repo.save(report)
         
-        return {"report": report}
+        return {
+                "report_id": report.id,
+                "status": "processed"
+            }
+
 
     except Exception as e:
         print(f"Error processing report: {e}")
